@@ -2,9 +2,9 @@
 
 import { Notice } from 'obsidian';
 import type { NotificationLevel } from './settings';
-import { shouldNotify, type NotifyKind } from './notify-core';
+import { shouldNotify, effectiveDuration, type NotifyKind } from './notify-core';
 
-export { shouldNotify, type NotifyKind } from './notify-core';
+export { shouldNotify, effectiveDuration, type NotifyKind } from './notify-core';
 
 export interface Noticer {
   /** 关键错误，任何级别都提示（静默也不例外）。 */
@@ -18,7 +18,7 @@ export interface Noticer {
 /** 由当前通知级别构造通知器。 */
 export function createNoticer(getLevel: () => NotificationLevel): Noticer {
   const show = (kind: NotifyKind, msg: string): void => {
-    if (shouldNotify(getLevel(), kind)) new Notice(msg);
+    if (shouldNotify(getLevel(), kind)) new Notice(msg, effectiveDuration(kind, msg));
   };
   return {
     error: (m): void => show('error', m),

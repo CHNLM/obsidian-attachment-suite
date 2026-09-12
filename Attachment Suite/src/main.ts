@@ -69,7 +69,7 @@ export default class AttachmentSuitePlugin extends Plugin {
       // 加载成功且自动化在生效时弹出的可见确认条（用于排查“代码是否真的加载”）
       if (this.settings.automation?.enabled) {
         console.log('[AttachmentSuite] onload OK, automation=', this.settings.automation, Date.now());
-        new Notice(`Attachment Suite v${this.manifest.version} 已加载（自动处理：开 · 间隔 ${this.settings.automation.interval} 秒）`);
+        new Notice(`Attachment Suite v${this.manifest.version} 已加载（自动处理：开 · 间隔 ${this.settings.automation.interval} 秒）`, 3000);
       } else {
         console.log('[AttachmentSuite] onload OK, automation 关闭, automation=', this.settings.automation, Date.now());
       }

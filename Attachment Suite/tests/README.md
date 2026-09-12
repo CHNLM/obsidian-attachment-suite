@@ -5,7 +5,7 @@
 - 测试框架：Vitest + TypeScript
 - 运行命令：项目根（`Attachment Suite/`）下执行 `npm test`（单次运行）或 `npm run test:watch`（监视模式）
 - 类型检查：`npm run typecheck`（`tsc --noEmit`，TypeScript 严格模式）
-- 当前规模：**22 个测试文件，228 个测试用例，全部通过**
+- 当前规模：**22 个测试文件，233 个测试用例，全部通过**
 
 ---
 
@@ -96,14 +96,14 @@ tests/
 
 | 文件 | 测试项 | 数量 |
 | --- | --- | --- |
-| [notify-core.test.ts](notify-core.test.ts) | `shouldNotify`：silent/summary/verbose 级别门控（error 恒提示） | 4 |
+| [notify-core.test.ts](notify-core.test.ts) | `shouldNotify`：silent/summary/verbose 级别门控（error 恒提示）；`effectiveDuration`：分级基础时长（error 5s/summary 3s/info 2s）与长度自适应加长 | 7 |
 | [settings-migration.test.ts](settings-migration.test.ts) | `migrateSettings`：默认回退、v0 扁平字段迁移（含嵌套保留）、丢弃未知字段、局部保留、版本一致跳过、附件目录来源（obsidian/custom）判定、数组字段整体覆盖 | 11 |
 
 ---
 
 ## 3. E2E 真实测试 — 测试项清单
 
-E2E 在 `tests/e2e/real-suite.test.ts`，以**真实文件系统临时仓库**为后端，加载插件并**实体执行全部 11 条命令**，校验真实落盘与链接改写。共 **23 个用例**，分 15 组。
+E2E 在 `tests/e2e/real-suite.test.ts`，以**真实文件系统临时仓库**为后端，加载插件并**实体执行全部 11 条命令**，校验真实落盘与链接改写。共 **25 个用例**，分 16 组。
 
 | 组 | 测试项 | 覆盖 |
 | --- | --- | --- |
@@ -122,6 +122,7 @@ E2E 在 `tests/e2e/real-suite.test.ts`，以**真实文件系统临时仓库**�
 | 13. P2 增强 | P2-9 清理空附件目录（移入回收站，非空目录保留） | empty-dir |
 | 14. 全库统一命名 | 批量命名全库独占与共享附件，共享附件为每篇各复制副本；folderByCategory 时共享附件在类别子目录下为每篇各复制副本；已命名附件占用序号段时新附件接续编号且重复运行幂等（不产生 `(1)`）；排除目录笔记的附件不被全库命名 | `bulk_rename`：`NoteX/NoteY_image_001/002`、`assets/image/` 子目录、`NoteZ_image_002`、`excluded/only-e.png` 保留 |
 | 15. 全库本地化 | 全库下载外链：同一外链去重仅落一份 MD5，排除目录笔记不处理 | `bulk_localize`：外链 → 本地 MD5、`excluded/` 保留外链 |
+| 16. 批量通知收敛 | 全库命名 60 篇与全库本地化 8 篇时仅产生一条汇总横幅，不逐篇刷屏 | `registry.notices` 数量校验 |
 
 > 说明：E2E 每次在 `os.tmpdir()` 新建临时仓（`mkdtempSync`），`seedFixture` 用 `resetVault` 重建，运行后 `afterAll` 清理。**不会动真实 `for-test` 目录**。
 

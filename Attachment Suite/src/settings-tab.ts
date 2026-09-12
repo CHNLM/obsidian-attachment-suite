@@ -69,7 +69,7 @@ export class AttachmentSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName('通知级别')
       .setDesc(
-        '决定操作完成后提示的详细程度。静默：只出错时提示；仅摘要：显示成功、失败、跳过三项汇总（推荐）；详细：显示更多过程信息。',
+        '决定操作完成后提示的详细程度。静默：只出错时提示；仅摘要：显示成功、失败、跳过三项汇总（推荐）；详细：显示更多过程信息。提示按级别分级停留时长：错误 5 秒、执行结果 3 秒、过程信息 2 秒；消息越长（换行越多）停留越久，长提示也能完整读完。',
       )
       .addDropdown((d) =>
         d

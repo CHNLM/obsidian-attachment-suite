@@ -6,7 +6,7 @@ import type { PluginSettings } from '../settings';
 import type { MediaDownloader } from './localize-media';
 import { runLocalizeNote } from './localize-media';
 import { runRenameNote } from './name-formatter';
-import { shouldNotify } from '../notify';
+import { shouldNotify, effectiveDuration } from '../notify';
 
 /** 忙锁：防止「自动处理」与它自身改写触发的事件重入（参照 ANF 的 renaming 忙锁）。 */
 let autoBusy = false;
@@ -51,7 +51,9 @@ export async function runAutoProcess(
     }
     console.log('[AttachmentSuite] runAutoProcess', notePath, { found: dl.found, downloaded: dl.downloaded, skipped: dl.skipped, renamed });
     const show = (kind: 'summary' | 'error', msg: string): void => {
-      if (shouldNotify(s.notificationLevel, kind)) new Notice(`Attachment Suite\n${msg}`);
+      if (shouldNotify(s.notificationLevel, kind)) {
+        new Notice(`Attachment Suite\n${msg}`, effectiveDuration(kind, msg));
+      }
     };
     if (dl.downloaded > 0 || renamed > 0) {
       // 有实际结果才通知成功，避免打字/轮询时空白刷屏
@@ -65,7 +67,7 @@ export async function runAutoProcess(
     // 关键：任何内部异常都必须可见，否则会被误判为“完全没触发”
     console.error('[AttachmentSuite] runAutoProcess ERROR', notePath, e);
     if (shouldNotify(s.notificationLevel, 'error')) {
-      new Notice(`Attachment Suite\n自动处理出错：${e instanceof Error ? e.message : String(e)}`);
+      new Notice(`Attachment Suite\n自动处理出错：${e instanceof Error ? e.message : String(e)}`, effectiveDuration('error', String(e instanceof Error ? e.message : e)));
     }
     return { downloaded: 0, renamed: 0 };
   } finally {

@@ -1272,7 +1272,7 @@ var AttachmentSettingTab = class extends import_obsidian2.PluginSettingTab {
       );
     }
     new import_obsidian2.Setting(containerEl).setName("\u901A\u77E5\u7EA7\u522B").setDesc(
-      "\u51B3\u5B9A\u64CD\u4F5C\u5B8C\u6210\u540E\u63D0\u793A\u7684\u8BE6\u7EC6\u7A0B\u5EA6\u3002\u9759\u9ED8\uFF1A\u53EA\u51FA\u9519\u65F6\u63D0\u793A\uFF1B\u4EC5\u6458\u8981\uFF1A\u663E\u793A\u6210\u529F\u3001\u5931\u8D25\u3001\u8DF3\u8FC7\u4E09\u9879\u6C47\u603B\uFF08\u63A8\u8350\uFF09\uFF1B\u8BE6\u7EC6\uFF1A\u663E\u793A\u66F4\u591A\u8FC7\u7A0B\u4FE1\u606F\u3002"
+      "\u51B3\u5B9A\u64CD\u4F5C\u5B8C\u6210\u540E\u63D0\u793A\u7684\u8BE6\u7EC6\u7A0B\u5EA6\u3002\u9759\u9ED8\uFF1A\u53EA\u51FA\u9519\u65F6\u63D0\u793A\uFF1B\u4EC5\u6458\u8981\uFF1A\u663E\u793A\u6210\u529F\u3001\u5931\u8D25\u3001\u8DF3\u8FC7\u4E09\u9879\u6C47\u603B\uFF08\u63A8\u8350\uFF09\uFF1B\u8BE6\u7EC6\uFF1A\u663E\u793A\u66F4\u591A\u8FC7\u7A0B\u4FE1\u606F\u3002\u63D0\u793A\u6309\u7EA7\u522B\u5206\u7EA7\u505C\u7559\u65F6\u957F\uFF1A\u9519\u8BEF 5 \u79D2\u3001\u6267\u884C\u7ED3\u679C 3 \u79D2\u3001\u8FC7\u7A0B\u4FE1\u606F 2 \u79D2\uFF1B\u6D88\u606F\u8D8A\u957F\uFF08\u6362\u884C\u8D8A\u591A\uFF09\u505C\u7559\u8D8A\u4E45\uFF0C\u957F\u63D0\u793A\u4E5F\u80FD\u5B8C\u6574\u8BFB\u5B8C\u3002"
     ).addDropdown(
       (d) => d.addOption("silent", "\u9759\u9ED8").addOption("summary", "\u4EC5\u6458\u8981").addOption("verbose", "\u8BE6\u7EC6").setValue(this.s.notificationLevel).onChange((v) => {
         this.s.notificationLevel = v;
@@ -1489,11 +1489,23 @@ function shouldNotify(level, kind) {
       return true;
   }
 }
+var BASE_DURATION = {
+  error: 5e3,
+  summary: 3e3,
+  info: 2e3
+};
+var CHARS_PER_LINE = 40;
+var EXTRA_PER_LINE = 1e3;
+function effectiveDuration(kind, msg) {
+  const base = BASE_DURATION[kind];
+  const lines = Math.max(1, Math.ceil(msg.length / CHARS_PER_LINE));
+  return base + (lines - 1) * EXTRA_PER_LINE;
+}
 
 // src/notify.ts
 function createNoticer(getLevel) {
   const show = (kind, msg) => {
-    if (shouldNotify(getLevel(), kind)) new import_obsidian3.Notice(msg);
+    if (shouldNotify(getLevel(), kind)) new import_obsidian3.Notice(msg, effectiveDuration(kind, msg));
   };
   return {
     error: (m) => show("error", m),
@@ -2737,7 +2749,7 @@ async function traceCommand(name, fn) {
   const t0 = Date.now();
   console.log(`[AttachmentSuite] cmd START: ${name} (${t0})`);
   new import_obsidian12.Notice(`Attachment Suite
-\u6267\u884C\u547D\u4EE4\uFF1A${name}`);
+\u6267\u884C\u547D\u4EE4\uFF1A${name}`, 2e3);
   try {
     await fn();
   } finally {
@@ -2969,8 +2981,10 @@ async function runAutoProcess(app, index, getSettings, downloader, mover, notePa
     }
     console.log("[AttachmentSuite] runAutoProcess", notePath, { found: dl.found, downloaded: dl.downloaded, skipped: dl.skipped, renamed });
     const show = (kind, msg) => {
-      if (shouldNotify(s.notificationLevel, kind)) new import_obsidian14.Notice(`Attachment Suite
-${msg}`);
+      if (shouldNotify(s.notificationLevel, kind)) {
+        new import_obsidian14.Notice(`Attachment Suite
+${msg}`, effectiveDuration(kind, msg));
+      }
     };
     if (dl.downloaded > 0 || renamed > 0) {
       show("summary", `\u672C\u5730\u5316\uFF1A\u4E0B\u8F7D ${dl.downloaded}\uFF0C\u8DF3\u8FC7 ${dl.skipped}\uFF1B\u81EA\u52A8\u547D\u540D\uFF1A${renamed} \u4E2A\u9644\u4EF6`);
@@ -2982,7 +2996,7 @@ ${msg}`);
     console.error("[AttachmentSuite] runAutoProcess ERROR", notePath, e2);
     if (shouldNotify(s.notificationLevel, "error")) {
       new import_obsidian14.Notice(`Attachment Suite
-\u81EA\u52A8\u5904\u7406\u51FA\u9519\uFF1A${e2 instanceof Error ? e2.message : String(e2)}`);
+\u81EA\u52A8\u5904\u7406\u51FA\u9519\uFF1A${e2 instanceof Error ? e2.message : String(e2)}`, effectiveDuration("error", String(e2 instanceof Error ? e2.message : e2)));
     }
     return { downloaded: 0, renamed: 0 };
   } finally {
@@ -3033,7 +3047,7 @@ var AttachmentSuitePlugin = class extends import_obsidian15.Plugin {
       logger.info(`Attachment Suite \u5DF2\u52A0\u8F7D\uFF08v${this.manifest.version}\uFF09`);
       if ((_a = this.settings.automation) == null ? void 0 : _a.enabled) {
         console.log("[AttachmentSuite] onload OK, automation=", this.settings.automation, Date.now());
-        new import_obsidian15.Notice(`Attachment Suite v${this.manifest.version} \u5DF2\u52A0\u8F7D\uFF08\u81EA\u52A8\u5904\u7406\uFF1A\u5F00 \xB7 \u95F4\u9694 ${this.settings.automation.interval} \u79D2\uFF09`);
+        new import_obsidian15.Notice(`Attachment Suite v${this.manifest.version} \u5DF2\u52A0\u8F7D\uFF08\u81EA\u52A8\u5904\u7406\uFF1A\u5F00 \xB7 \u95F4\u9694 ${this.settings.automation.interval} \u79D2\uFF09`, 3e3);
       } else {
         console.log("[AttachmentSuite] onload OK, automation \u5173\u95ED, automation=", this.settings.automation, Date.now());
       }

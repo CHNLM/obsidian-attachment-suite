@@ -32,7 +32,7 @@ export interface CommandDef {
 async function traceCommand(name: string, fn: () => void | Promise<unknown>): Promise<void> {
   const t0 = Date.now();
   console.log(`[AttachmentSuite] cmd START: ${name} (${t0})`);
-  new Notice(`Attachment Suite\n执行命令：${name}`);
+  new Notice(`Attachment Suite\n执行命令：${name}`, 2000);
   try {
     await fn();
   } finally {

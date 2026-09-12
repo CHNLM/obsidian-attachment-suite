@@ -594,3 +594,50 @@ describe('15. 全库本地化', () => {
     expect(skipText).toContain(httpBase);
   });
 });
+
+/* ==================== 16. 批量通知收敛（不逐篇刷屏） ==================== */
+
+describe('16. 批量通知收敛（不逐篇刷屏）', () => {
+  it('全库命名大量笔记只产生一条汇总通知', async () => {
+    // 构造大量笔记、各一张独占附件，模拟“几百个操作”的压力场景
+    const noteCount = 60;
+    for (let i = 0; i < noteCount; i++) {
+      writeText(VAULT_ROOT, `N${i}.md`, `# N${i}\n\n![[assets/n${i}.png]]\n`);
+      writeBinary(VAULT_ROOT, `assets/n${i}.png`, tinyImage('png'));
+    }
+    obsidian._registry.notices = []; // 清零，聚焦本次批量产生的横幅通知
+
+    await command('attachment:bulk-rename')();
+    await runConfirm();
+
+    const notices = obsidian._registry.notices;
+    const summaries = notices.filter((n) => String(n.message).includes('全库命名完成'));
+    // 收敛：即便处理 60 篇也只弹 1 条汇总，绝不逐篇刷屏
+    expect(summaries).toHaveLength(1);
+    // 汇总携带总计数（夹具 NoteA 等已含若干独占附件，数字可大于 60）
+    expect(String(summaries[0].message)).toMatch(/重命名 \d+/);
+    expect(String(summaries[0].message)).toContain('失败 0');
+    // 若曾逐篇通知会是 60+ 条；这里仅「命令开始 + 汇总」两条数量级
+    expect(notices.length).toBeLessThanOrEqual(3);
+  });
+
+  it('全库本地化多篇只产生一条汇总通知', async () => {
+    // 多篇笔记各含一条外链，验证批量本地化同样收敛为单条汇总
+    const noteCount = 8;
+    for (let i = 0; i < noteCount; i++) {
+      writeText(VAULT_ROOT, `L${i}.md`, `# L${i}\n\n![p](${httpBase}/logo.png)\n`);
+    }
+    obsidian._registry.notices = [];
+
+    handle.open('L0.md');
+    await command('attachment:bulk-localize')();
+    await runConfirm();
+
+    const notices = obsidian._registry.notices;
+    const summaries = notices.filter((n) => String(n.message).includes('全库本地化完成'));
+    // 收敛：8 篇只弹 1 条汇总
+    expect(summaries).toHaveLength(1);
+    expect(String(summaries[0].message)).toContain('全库本地化完成');
+    expect(notices.length).toBeLessThanOrEqual(3);
+  });
+});
