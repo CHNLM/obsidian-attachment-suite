@@ -1,0 +1,285 @@
+/* Attachment Suite — 界面样式 */
+
+/* ---- 清理未用附件确认弹窗 ---- */
+.modal.iap-cleanup-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 4px;
+}
+
+.iap-cleanup-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.iap-cleanup-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.iap-cleanup-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.iap-cleanup-count {
+  flex-shrink: 0;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.iap-cleanup-desc {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.iap-cleanup-list {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+}
+
+.iap-cleanup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.iap-cleanup-row:last-child {
+  border-bottom: none;
+}
+
+.iap-cleanup-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.iap-cleanup-name {
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.iap-cleanup-path {
+  flex-shrink: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.iap-cleanup-more {
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.iap-cleanup-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.iap-btn.mod-warning {
+  background: var(--background-modifier-error);
+  color: var(--text-on-accent);
+}
+
+/* ---- 通用预览确认弹窗（命名 / 路径修复） ---- */
+.modal.iap-confirm-modal .modal-content,
+.modal.iap-report-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 4px;
+}
+
+.iap-confirm-header,
+.iap-report-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.iap-confirm-title-row,
+.iap-report-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.iap-confirm-title,
+.iap-report-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.iap-confirm-count,
+.iap-report-count {
+  flex-shrink: 0;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.iap-confirm-desc,
+.iap-report-summary {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.iap-confirm-list {
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+}
+
+.iap-confirm-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.iap-confirm-row:last-child {
+  border-bottom: none;
+}
+
+.iap-confirm-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.iap-confirm-reason {
+  align-self: flex-start;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.iap-confirm-flow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.iap-confirm-from,
+.iap-confirm-to {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.iap-confirm-arrow {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.iap-confirm-more,
+.iap-report-more {
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.iap-confirm-footer,
+.iap-report-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.iap-btn {
+  flex-shrink: 0;
+}
+
+/* ---- 一致性报告弹窗 ---- */
+.iap-report-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.iap-report-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.iap-report-section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.iap-report-section-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.iap-report-list {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+}
+
+.iap-report-item {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.iap-report-item:last-child {
+  border-bottom: none;
+}
+
+.iap-report-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.iap-report-empty {
+  padding: 12px;
+  color: var(--text-muted);
+}
+
+/* ---- 设置面板：分区提示文字 ---- */
+.iap-settings-section-hint {
+  margin: 10px 0 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}

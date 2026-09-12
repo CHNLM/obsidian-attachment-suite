@@ -1,0 +1,28 @@
+{
+  "name": "attachment-suite",
+  "version": "1.0.0",
+  "description": "Obsidian attachment suite: localize, name, audit/collect, cleanup and export attachments in one plugin.",
+  "main": "dist/attachment-suite/main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs production",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "version": "node version-bump.mjs"
+  },
+  "keywords": [
+    "obsidian",
+    "attachment",
+    "localize",
+    "cleaner"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "esbuild": "^0.21.5",
+    "obsidian": "^1.5.7",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "attachment-suite",
+  "name": "Attachment Suite",
+  "version": "1.0.0",
+  "minAppVersion": "1.6.7",
+  "description": "Localize, name, audit, collect, cleanup and export attachments — all in one suite.",
+  "author": "Attachment Suite Dev",
+  "isDesktopOnly": true
+}

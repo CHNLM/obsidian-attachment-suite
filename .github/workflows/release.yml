@@ -1,0 +1,163 @@
+name: Release obsidian plugin
+
+# 双触发：手动点击 或 推送 v* 标签自动发布
+on:
+  workflow_dispatch: {}
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  # contents: 创建 Release / 附件上传所需
+  # actions:  upload-artifact 在显式声明 permissions 后默认降为 none，需显式放开
+  contents: write
+  actions: write
+
+# 串行化所有发布运行：手动创建 tag 推送 与 tag 推送事件 双触发时排队逐个执行，
+# 配合下方幂等检查保证同一版本只发布一次
+concurrency:
+  group: obsidian-release
+  cancel-in-progress: false
+
+env:
+  PLUGIN_DIR: 'Attachment Suite'
+
+jobs:
+  detect-version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      exists:  ${{ steps.ver.outputs.exists }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve & validate version
+        id: ver
+        shell: bash
+        # GITHUB_TOKEN 不在 runner 默认注入的环境变量中，必须显式传入：
+        # gh 读取 GH_TOKEN，curl 则直接在头部内联 ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 先解析版本：标签触发取自 tag，手动触发取自 manifest（不修改任何版本文件）
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF##*/}"; VERSION="${VERSION#v}"
+          else
+            VERSION="$(jq -r .version "$PLUGIN_DIR/manifest.json")"
+          fi
+
+          # 版本号合法性校验（main.minor.patch），无论是否已发布都必须合法
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "非法版本号: $VERSION" >&2; exit 1
+          fi
+
+          # 幂等优先判定：已有 Release 则整体跳过（处理手动 + tag 双触发去重）。
+          # 用 REST API 的 HTTP 状态码明确区分：200=已存在跳过 / 404=不存在继续 / 其它=真错误终止。
+          # 不用 `gh release view` 的退出码（0/1/4 语义有歧义，无法可靠区分"不存在"与"认证失败"）。
+          HTTP_CODE="$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/v$VERSION")"
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "exists=true"     >> "$GITHUB_OUTPUT"
+            exit 0
+          elif [ "$HTTP_CODE" != "404" ]; then
+            echo "查询 Release v$VERSION 状态失败(HTTP $HTTP_CODE)，请检查网络/令牌权限，终止运行" >&2; exit 1
+          fi
+
+          # ---- 以下为真正发布前的前置校验 ----
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # 与 manifest 一致，防止错标
+            MANIFEST="$(jq -r .version "$PLUGIN_DIR/manifest.json")"
+            if [ "$VERSION" != "$MANIFEST" ]; then
+              echo "tag 版本($VERSION) 与 manifest.json($MANIFEST) 不一致，中止" >&2; exit 1
+            fi
+            # 防陈旧标签：tag 必须指向默认分支最新 HEAD，避免在历史 commit 上误发同版本
+            DEF_BR="$(gh repo view "$GITHUB_REPOSITORY" --json defaultBranchRef -q '.defaultBranchRef.name')"
+            TAG_SHA="$(git rev-parse "v$VERSION^{commit}")"
+            HEAD_SHA="$(gh api "repos/$GITHUB_REPOSITORY/commits/$DEF_BR" -q .sha)"
+            if [ "$TAG_SHA" != "$HEAD_SHA" ]; then
+              echo "tag v$VERSION 指向 $TAG_SHA，而默认分支 $DEF_BR 指向 $HEAD_SHA，疑似陈旧 commit 误发，中止" >&2; exit 1
+            fi
+          fi
+
+          # versions.json 必须包含该版本映射（minAppVersion 降级兼容信息不可缺失）
+          if ! jq -e --arg v "$VERSION" '.[$v] != null' "$PLUGIN_DIR/versions.json" >/dev/null; then
+            echo "versions.json 缺少 $VERSION 映射，请先执行 npm run version $VERSION 生成，中止" >&2; exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "exists=false"     >> "$GITHUB_OUTPUT"
+
+  build-release:
+    needs: detect-version
+    if: needs.detect-version.outputs.exists == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.detect-version.outputs.version }}
+    steps:
+      # 全量历史 + tags：生成 Release notes 需要上一个版本 tag 与提交范围
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: 'Attachment Suite/.nvmrc'
+          cache: npm
+          cache-dependency-path: 'Attachment Suite/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ${{ env.PLUGIN_DIR }}
+        run: npm ci
+      - name: Typecheck
+        working-directory: ${{ env.PLUGIN_DIR }}
+        run: npm run typecheck
+      - name: Test
+        working-directory: ${{ env.PLUGIN_DIR }}
+        run: npm test
+      - name: Build
+        working-directory: ${{ env.PLUGIN_DIR }}
+        run: npm run build
+
+      # 打包插件目录为 attachment-suite.zip（内含 attachment-suite/ 子目录）
+      - name: Package plugin zip
+        shell: bash
+        run: |
+          cd "$PLUGIN_DIR/dist"
+          zip -r attachment-suite.zip attachment-suite
+      - uses: actions/upload-artifact@v7
+        with:
+          name: attachment-suite-${{ env.VERSION }}
+          path: Attachment Suite/dist/attachment-suite.zip
+          retention-days: 7
+
+      # 生成 Release notes：取上一个版本 tag 之后的提交摘要（首个版本则列出全部提交）
+      - name: Generate release notes
+        shell: bash
+        run: |
+          PREV_TAG="$(git tag --list 'v*' --sort=-v:refname | head -n1 || true)"
+          echo "## 变更" > notes.md
+          if [ -n "$PREV_TAG" ]; then
+            git log --oneline --no-merges "$PREV_TAG"..HEAD >> notes.md
+          else
+            git log --oneline --no-merges >> notes.md
+          fi
+
+      # 创建 Release（tag 不存在时由 API 在 target_commitish 处自动创建 v<version>；
+      # 若因此触发 push tags 事件重跑，会命中幂等检查秒退），随后上传附件
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          body_path: notes.md
+          draft: false
+          prerelease: false
+          files: Attachment Suite/dist/attachment-suite.zip
