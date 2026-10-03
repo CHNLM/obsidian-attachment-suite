@@ -1,0 +1,97 @@
+name: Verify
+
+# 发布前校验。**本工作流没有自动触发。**
+#
+# 为什么：本仓库的自动化口径是「校验只在发版链路上跑」——
+# 唯一的入口是 `.github/workflows/release.yml`（推送版本标签 或 手动 dispatch），
+# 它以可复用工作流的方式调用本文件（`uses: ./.github/workflows/verify.yml`），
+# 并且**只有本工作流通过之后**，它才会构建、签名并发布产物。
+#
+# 保留 `workflow_dispatch` 是为了需要时能在 Actions 页**单独**跑一遍校验
+# （只读、不产出任何发布产物），不要给它加回 push / pull_request 触发——
+# 那会让"推 main 就跑校验"重新成立，与本仓库的取舍相反（决定见 docs/invariants.md §6）。
+#
+# `os_matrix`：校验跑在哪些平台。**默认仍是双平台**，所以 release.yml 不传值时的行为与以前完全一致
+#   （校验是产物的前置，这条安全属性不因为"可配置"而变弱）。它的用途是把原本写死在这里的取舍
+#   变成一行可调的参数：真嫌发布慢时，调用方写
+#   `with: { os_matrix: '["ubuntu-latest"]' }` 即可收成单平台。
+#   输入名用下划线而非本仓库惯用的连字符：它要在 `${{ }}` 表达式里引用，
+#   带连字符就得写成下标形式（inputs['os-matrix']），容易写错。
+on:
+  workflow_call:
+    inputs:
+      os_matrix:
+        description: '校验平台（JSON 数组，默认 ubuntu + windows）'
+        type: string
+        default: '["ubuntu-latest","windows-latest"]'
+  workflow_dispatch:
+    inputs:
+      os_matrix:
+        description: '校验平台（JSON 数组，默认 ubuntu + windows）'
+        type: string
+        default: '["ubuntu-latest","windows-latest"]'
+
+# 只读：校验不该持有写权限。这也是它与 release.yml 的发布 job 分开写的理由——
+# 发布 job 需要 contents: write / id-token: write，而本工作流全程只读。
+permissions:
+  contents: read
+
+# 同一分支连续触发时只保留最新一次：旧运行还在排队/执行就直接取消，省 runner 时间。
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PLUGIN_DIR: 'Attachment Suite'
+
+jobs:
+  verify:
+    name: verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      # 一个平台失败不打断另一个——要的是"到底哪儿不一样"的完整信息
+      fail-fast: false
+      matrix:
+        # 插件是桌面软件，三个平台都可能用到，而日常开发主要在 Windows：
+        # 因此**默认**跑 ubuntu + windows，让"只在某个平台成立"的假设尽早暴露。
+        # ⚠️ 校验只在发版时运行之后，平台差异**要到发版那一刻才暴露**。
+        #    嫌发布慢可以把 os_matrix 收成 '["ubuntu-latest"]'（见文件头），代价是失去这条跨平台防线。
+        # lockfile 为 v3，含全部平台的 @esbuild/* 可选依赖，两个平台都能 npm ci
+        # （依赖更新已改为手动，不再有工具自动重写 lockfile，这条更稳了）。
+        os: ${{ fromJSON(inputs.os_matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: 'Attachment Suite/.nvmrc'
+          cache: npm
+          cache-dependency-path: 'Attachment Suite/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ${{ env.PLUGIN_DIR }}
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: ${{ env.PLUGIN_DIR }}
+        run: npm run typecheck
+
+      - name: Test
+        working-directory: ${{ env.PLUGIN_DIR }}
+        run: npm test
+
+      - name: Build
+        working-directory: ${{ env.PLUGIN_DIR }}
+        run: npm run build
+
+      # 构建"返回 0"不等于产物完整：esbuild 的落盘插件只在源文件存在时才拷贝
+      # manifest.json / styles.css，缺文件时 build 依然是成功的。
+      # 判据的实现在 `.github/actions/verify-plugin-dist/action.yml`——
+      # 单一来源，release.yml 的 build-release 用的是同一份（那里要查的是它自己那次构建）。
+      - name: Verify build output contains the three required files
+        uses: ./.github/actions/verify-plugin-dist
+        with:
+          plugin-dir: ${{ env.PLUGIN_DIR }}

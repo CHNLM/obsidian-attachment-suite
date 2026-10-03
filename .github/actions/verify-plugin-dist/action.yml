@@ -1,0 +1,41 @@
+name: Verify plugin dist
+description: 断言插件包目录里 main.js / manifest.json / styles.css 三件套齐全
+
+# 为什么做成复合 action，而不是在 verify.yml 与 release.yml 里各写一遍：
+#   这段判断有两个消费方——① verify.yml 的校验 job（含 Actions 页手动单跑校验）；
+#   ② release.yml 的 build-release（发布前的最后一道，见那里「为什么还要再查一次」）。
+#   本仓库的既有结论是「同一件事写在两处就是两份实现，迟早漂移」，而这里保护的是
+#   **真正被发布的产物**，漂移代价最高，所以宁可多一层间接也要保住单一来源。
+#
+# 背景（为什么构建成功还不够）：esbuild 的落盘插件用 existsSync 判断后拷贝静态文件，
+#   源文件缺失时它**静默跳过**，于是 `npm run build` 返回 0 而 dist/ 里缺 manifest.json
+#   或 styles.css。下游两个 action 也不会兜住这件事：
+#   actions/attest 只在**一个 subject 都解析不出**时才报错（少一个文件照样签名），
+#   action-gh-release 的 fail_on_unmatched_files 默认 false（缺文件只警告）。
+inputs:
+  plugin-dir:
+    description: 插件目录（相对仓库根），例如 'Attachment Suite'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # 输入统一经 env 传入，run 脚本里不内插 ${{ }}（与 release.yml 同一口径）。
+    - name: Verify build output contains the three required files
+      shell: bash
+      env:
+        PLUGIN_DIR: ${{ inputs['plugin-dir'] }}
+      run: |
+        set -euo pipefail
+        missing=0
+        for f in main.js manifest.json styles.css; do
+          if [ ! -f "$PLUGIN_DIR/dist/attachment-suite/$f" ]; then
+            echo "::error::构建产物缺少 $f（dist/attachment-suite/）"
+            missing=1
+          fi
+        done
+        if [ "$missing" -ne 0 ]; then
+          echo "构建产物不完整，无法作为可安装插件包" >&2
+          exit 1
+        fi
+        echo "构建产物三件套齐全"
