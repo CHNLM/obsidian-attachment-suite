@@ -12,5 +12,5 @@ for-test/
 Thumbs.db
 desktop.ini
 
-# 注意：归档文档在仓库根 docs/，**随仓库提交**（2026-09-29 由不提交的 for-test/docs/ 迁入）。
+# 注意：归档文档在仓库根 docs/，**随仓库提交**。
 # 不要把 docs/ 加进本文件。
