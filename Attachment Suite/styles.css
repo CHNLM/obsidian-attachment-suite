@@ -1,0 +1,388 @@
+/* Attachment Suite — 界面样式 */
+
+/* ---- 清理未用附件确认弹窗 ---- */
+.modal.iap-cleanup-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 4px;
+}
+
+.iap-cleanup-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.iap-cleanup-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.iap-cleanup-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.iap-cleanup-count {
+  flex-shrink: 0;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.iap-cleanup-desc {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.iap-cleanup-list {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+}
+
+.iap-cleanup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.iap-cleanup-row:last-child {
+  border-bottom: none;
+}
+
+.iap-cleanup-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.iap-cleanup-name {
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.iap-cleanup-path {
+  flex-shrink: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.iap-cleanup-more {
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.iap-cleanup-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.iap-btn.mod-warning {
+  background: var(--background-modifier-error);
+  color: var(--text-on-accent);
+}
+
+/* ---- 通用预览确认弹窗（命名 / 路径修复） ---- */
+.modal.iap-confirm-modal .modal-content,
+.modal.iap-report-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 4px;
+}
+
+.iap-confirm-header,
+.iap-report-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.iap-confirm-title-row,
+.iap-report-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.iap-confirm-title,
+.iap-report-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.iap-confirm-count,
+.iap-report-count {
+  flex-shrink: 0;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.iap-confirm-desc,
+.iap-report-summary {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.iap-confirm-list {
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+}
+
+.iap-confirm-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.iap-confirm-row:last-child {
+  border-bottom: none;
+}
+
+.iap-confirm-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* 可点击行（如“将被拦截的引用”，点击定位到来源笔记） */
+.iap-confirm-row-clickable {
+  cursor: pointer;
+}
+
+/* 只读分区标题（如“将被拦截的引用（3 个，点击定位到笔记）”） */
+.iap-confirm-section-title {
+  margin: 16px 0 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* 只读分区：以虚线边框区分，暗示“这些不会被改动” */
+.iap-confirm-list-blocked {
+  border-style: dashed;
+}
+
+.iap-confirm-reason {
+  align-self: flex-start;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.iap-confirm-flow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.iap-confirm-from,
+.iap-confirm-to {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.iap-confirm-arrow {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.iap-confirm-more,
+.iap-report-more {
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.iap-confirm-footer,
+.iap-report-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.iap-btn {
+  flex-shrink: 0;
+}
+
+.iap-candidate-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+}
+
+.iap-candidate-item:last-child {
+  border-bottom: none;
+}
+
+.iap-candidate-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.iap-candidate-item-selected {
+  background: var(--background-modifier-hover);
+  box-shadow: inset 2px 0 0 var(--interactive-accent);
+}
+
+/* 「先选一个候选」的提示：仅在未选中时存在（选中后由 JS 移除）。
+   它替代了从前"按钮能点、点了没反应"的无声失败。 */
+.iap-candidate-hint {
+  margin: 8px 0 0;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+/* ---- 一致性报告弹窗 ---- */
+.iap-report-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.iap-report-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.iap-report-section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.iap-report-section-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.iap-report-list {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+}
+
+.iap-report-item {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.iap-report-item:last-child {
+  border-bottom: none;
+}
+
+.iap-report-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* 可点击的断链项：指针与强调色暗示可跳转定位 */
+.iap-report-item-clickable {
+  cursor: pointer;
+  color: var(--text-accent);
+}
+.iap-report-item-clickable:hover {
+  text-decoration: underline;
+  background: var(--background-modifier-hover);
+}
+
+.iap-report-empty {
+  padding: 12px;
+  color: var(--text-muted);
+}
+
+/* ---- 设置面板：分区提示文字 ---- */
+.iap-settings-section-hint {
+  margin: 10px 0 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* ---- 设置面板：受父开关联动的子设置区 ---- */
+/* 父开关关闭时，其中的输入控件由 JS 置 disabled；这里只补视觉上的"失效感"，
+   让"设置了却不生效"一眼可见，而不是靠用户去猜。 */
+.iap-settings-gated.iap-settings-gated-off {
+  opacity: 0.5;
+}
+
+/* ---- 设置面板：开箱即用说明（设置页最顶部） ---- */
+/* 40 多个选项平铺出来会给人"必须先配点什么"的压力，这一段就是先把这件事说清楚。 */
+.iap-settings-quickstart {
+  margin: 4px 0 14px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--interactive-accent);
+  border-radius: 4px;
+  background-color: var(--background-secondary);
+  color: var(--text-normal);
+}
+
+/* ---- 设置面板：按实际情况给出的针对性提示（如"附件会落在库根"） ---- */
+/* 这类提示回答的是"你现在的配置意味着什么"，比一般说明更重要，故给一层底色。 */
+.iap-settings-hint-dynamic > .iap-settings-warn {
+  margin: 6px 0 14px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--text-warning);
+  border-radius: 4px;
+  background-color: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* ---- 设置面板：高级细项折叠区 ---- */
+/* 常用项保持可见，细项收进去；展开与否不影响任何行为（默认值原样生效）。 */
+.iap-settings-advanced > summary {
+  margin: 14px 0 6px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.iap-settings-advanced > summary:hover {
+  color: var(--text-normal);
+}

@@ -1,0 +1,16 @@
+# 真实测试仓库（验收库实体 + 真实宿主运行报告）：不提交
+# 说明：这些是**生成物**——验收库可由 `npx vitest run tests/e2e/seed-acceptance.test.ts` 幂等重建，
+# 报告是一次性运行产物，进版本库只会带来噪声。
+for-test/
+
+# 助手工作区数据（会话记忆、项目技能等）：本地保留，不提交
+.workbuddy/
+
+# 操作系统垃圾文件。根目录与 docs/ 都已在版本控制内，需在此显式忽略
+# （子项目另有一份 `Attachment Suite/.gitignore`，两份各自覆盖自己的目录树）。
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 注意：归档文档在仓库根 docs/，**随仓库提交**。
+# 不要把 docs/ 加进本文件。

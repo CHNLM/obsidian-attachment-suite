@@ -1,0 +1,8 @@
+node_modules
+build
+# 构建产物：由 npm run build / CI（release.yml）从源码重建，不提交
+dist
+.DS_Store
+*.log
+.vscode
+test-app
