@@ -1,0 +1,366 @@
+name: Release obsidian plugin
+
+# 唯一的自动化入口：手动点击 或 推送版本标签。
+#
+# 本仓库**没有"推 main 就跑"的日常 CI**——校验只在这条发布链路上运行，而且是发布产物的前置：
+#   detect-version（前置校验 + 幂等）→ verify（校验，定义见 verify.yml）→ build-release（构建 / 签名 / 发布）
+# build-release 声明了 `needs: [detect-version, verify]`：verify 不通过，Release 与附件一个都不会生成。
+# 需要单独跑一遍校验时，去 Actions 页手动 dispatch `Verify`（只读、不产出发布产物）。
+#
+# ⚠️ 标签规范：与 manifest.json 的版本号**逐字一致，不带 `v` 前缀**（如 `1.0.1`）——
+#    这是 Obsidian 官方发布规范（其示例即 `git tag -a 1.0.1`）。
+#    为了让"推错格式"不至于静默什么都不发生，带 `v` 的标签也会触发运行，
+#    但会在校验阶段被拒绝并明确告诉该怎么改名。
+# 手动触发时可选 dry_run=true：把整条链路跑到"即将发布"为止（含 detect-version 的全部前置校验、
+# verify 的双平台校验与构建、打包），但跳过两件**会对外留痕且不可撤销**的事——
+# 构建来源证明（公开仓库走 Sigstore 公共透明日志，签了就撤不回）与创建 Release。
+# 有了它，想验证发布链路就不必真的发一版出来。
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '只跑校验与构建：跳过构建来源证明与创建 Release'
+        type: boolean
+        default: false
+  push:
+    tags:
+      - '[0-9]*'
+      - 'v[0-9]*'
+
+# 基线权限：最小只读。各 job 需要什么就自行声明什么（见下方 job 级 permissions）。
+permissions:
+  contents: read
+
+# 串行化所有发布运行：手动触发与标签推送双触发时排队逐个执行，
+# 配合下方幂等检查保证同一版本只发布一次
+concurrency:
+  group: obsidian-release
+  cancel-in-progress: false
+
+env:
+  PLUGIN_DIR: 'Attachment Suite'
+  # ---- 触发上下文与 GH_TOKEN **刻意不放在这里**（历史位置），而是挂在唯一用到它们的那一个
+  #      step 上（见 detect-version 的 `Resolve & validate version`）----
+  # 为什么：工作流级 env 会注入**每个 step 的环境**，包括 build-release 里的 `npm ci`。
+  # 那个 job 的令牌带 contents:write / attestations:write / id-token:write，而 devDependencies
+  # 未钉版本、install 时会执行生命周期脚本（esbuild 即有）——等于把发布权限交给第三方安装脚本。
+  # action 都钉到 commit SHA 了，依赖没有；这里正是链路上最软的一环，所以按最小暴露面收口。
+  # 口径不变：run 脚本里**不内插** `${{ }}`，一律经 env 取（也避免 token 出现在命令行上）。
+
+jobs:
+  detect-version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # 读取仓库信息与 Release 状态
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      exists:  ${{ steps.ver.outputs.exists }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve & validate version
+        id: ver
+        shell: bash
+        # 只有这一步用得到这五个值：GH_TOKEN 供 REST/gh 查询；其余用于区分触发方式并校验来源。
+        # 收在 step 级而非工作流级——见文件头 env 处的说明。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          # 判定结论写进 Actions 页的 Job summary——手动触发与 dry run 时最直观的反馈面。
+          summary() { printf '%s\n' "$@" >> "$GITHUB_STEP_SUMMARY"; }
+
+          # 带退避的重试（最多 3 次）：gh/curl 的偶发抖动不该让整条发布链路变红。
+          retry() {
+            local attempt=1
+            while ! "$@"; do
+              if [ "$attempt" -ge 3 ]; then
+                return 1
+              fi
+              echo "第 $attempt 次调用失败，$((attempt * 2))s 后重试：$*" >&2
+              sleep $((attempt * 2))
+              attempt=$((attempt + 1))
+            done
+          }
+
+          # 版本取自标签（手动触发则取自 manifest，两者都不修改任何版本文件）
+          if [ "$EVENT_NAME" = "push" ]; then
+            RAW="${REF##*/}"
+            # 规范：标签必须与 manifest 版本一致、不带 v 前缀（带 v 的也触发，是为了能在此明确报错）
+            if [ "${RAW#v}" != "$RAW" ]; then
+              echo "发布标签必须与 manifest.json 的版本号一致，且不带 v 前缀" >&2
+              echo "  当前标签：$RAW    应改为：${RAW#v}" >&2
+              exit 1
+            fi
+            VERSION="$RAW"
+          else
+            VERSION="$(jq -r .version "$PLUGIN_DIR/manifest.json")"
+          fi
+
+          # 版本号合法性校验（main.minor.patch），无论是否已发布都必须合法
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "非法版本号: $VERSION" >&2; exit 1
+          fi
+
+          # 幂等优先判定：已有**已发布**的 Release 则整体跳过（处理手动 + 标签双触发去重）。
+          # 用 REST API 的 HTTP 状态码明确区分：200=已存在 / 404=不存在继续 / 其它=真错误终止。
+          # 不用 `gh release view` 的退出码（0/1/4 语义有歧义，无法可靠区分"不存在"与"认证失败"）。
+          # ⚠️ 同名 **draft** 不算"已发布"：draft 是上一次运行中途失败的残留，若也判为"已存在"，
+          #    后续重跑会被永久跳过、只能人工删掉 draft 才能恢复。故 draft 视为不存在并继续发布
+          #    （action-gh-release 按 tag 找到它会就地更新，不会产生第二个 release）。
+          HTTP_CODE=""
+          for attempt in 1 2 3; do
+            set +e
+            HTTP_CODE="$(curl -sS -o release.json -w '%{http_code}' \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/releases/tags/$VERSION")"
+            CURL_RC=$?
+            set -e
+            # 拿到明确答复就跳出：200/404 都是有语义的答案。只有网络失败与 5xx 才值得重试。
+            if [ "$CURL_RC" -eq 0 ] && [ "${HTTP_CODE#5}" = "$HTTP_CODE" ]; then
+              break
+            fi
+            echo "查询 Release $VERSION 状态第 $attempt 次失败（curl 退出码 $CURL_RC，HTTP $HTTP_CODE）" >&2
+            if [ "$attempt" -ge 3 ]; then
+              echo "网络或服务端持续失败，无法确认该版本是否已发布，终止运行（宁可不发，也不重复发）" >&2
+              exit 1
+            fi
+            sleep $((attempt * 2))
+          done
+          # ⚠️ 上面两处判断必须写成 if，不能写成 `[ ... ] && break`：
+          #    后者在条件不成立时的非零结果会触发 `set -e`，于是脚本在打印任何诊断之前就直接退出——
+          #    而那正是这一项要修掉的毛病（curl 失败时只剩一条没有上下文的报错）。
+          #    curl 退出码与 HTTP 状态码分开报，就是为了让"连不上"和"接口答非所问"可区分。
+          if [ "$HTTP_CODE" = "200" ]; then
+            IS_DRAFT="$(jq -r '.draft // false' release.json)"
+            rm -f release.json
+            if [ "$IS_DRAFT" != "true" ]; then
+              echo "Release $VERSION 已经发布过，跳过（幂等）"
+              summary "### 版本解析结果" "" \
+                      "- 版本：\`$VERSION\`" \
+                      "- 结论：**该版本已发布过，本次整个链路跳过（幂等）**"
+              echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+              echo "exists=true"     >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "已存在同名 draft Release（上次运行的残留），视为未发布，继续"
+          elif [ "$HTTP_CODE" != "404" ]; then
+            echo "查询 Release $VERSION 状态失败(HTTP $HTTP_CODE)，请检查网络/令牌权限，终止运行" >&2; exit 1
+          fi
+          rm -f release.json
+
+          # ---- 以下为真正发布前的前置校验 ----
+          # 默认分支及其当前 HEAD：两种触发方式都要用到——push 校验标签指向它，dispatch 校验自身来自它
+          # 这两处走 retry：失败时留空，由下面的判空给出可读原因（而不是 `set -e` 的裸报错）。
+          DEF_BR="$(retry gh repo view "$REPO" --json defaultBranchRef -q '.defaultBranchRef.name' || true)"
+          if [ -z "$DEF_BR" ]; then
+            echo "无法解析默认分支名（重试 3 次后仍失败），终止运行" >&2; exit 1
+          fi
+          HEAD_SHA="$(retry gh api "repos/$REPO/commits/$DEF_BR" -q .sha || true)"
+          if [ -z "$HEAD_SHA" ]; then
+            echo "无法获取默认分支 $DEF_BR 的 HEAD，终止运行" >&2; exit 1
+          fi
+
+          if [ "$EVENT_NAME" = "push" ]; then
+            # 与 manifest 一致，防止错标
+            MANIFEST="$(jq -r .version "$PLUGIN_DIR/manifest.json")"
+            if [ "$VERSION" != "$MANIFEST" ]; then
+              echo "标签版本($VERSION) 与 manifest.json($MANIFEST) 不一致，中止" >&2; exit 1
+            fi
+            # 防陈旧标签：标签必须指向默认分支最新 HEAD，避免在历史 commit 上误发同版本
+            TAG_SHA="$(git rev-parse "$VERSION^{commit}")"
+            if [ "$TAG_SHA" != "$HEAD_SHA" ]; then
+              echo "标签 $VERSION 指向 $TAG_SHA，而默认分支 $DEF_BR 指向 $HEAD_SHA，疑似陈旧 commit 误发，中止" >&2; exit 1
+            fi
+          else
+            # 防"从历史提交 / 非默认分支手动发布"：以前这里不校验，于是 dispatch 可以在任意
+            # 旧 commit 上跑，把旧代码当作新版本发出去（target_commitish 取的就是那个 commit）。
+            if [ "$REF" != "refs/heads/$DEF_BR" ]; then
+              echo "手动触发必须选择默认分支 $DEF_BR（当前 $REF），中止" >&2; exit 1
+            fi
+            if [ "$SHA" != "$HEAD_SHA" ]; then
+              echo "手动触发所用提交($SHA) 不是 $DEF_BR 当前 HEAD($HEAD_SHA)——期间可能已推入新提交，请重新触发，中止" >&2; exit 1
+            fi
+          fi
+
+          # versions.json 必须包含该版本映射（minAppVersion 降级兼容信息不可缺失）
+          # 注意是 `npm run version -- x.y.z`：缺 `--` 时 npm 不会把版本号透传给脚本。
+          if ! jq -e --arg v "$VERSION" '.[$v] != null' "$PLUGIN_DIR/versions.json" >/dev/null; then
+            echo "versions.json 缺少 $VERSION 映射，请先执行 npm run version -- $VERSION 生成，中止" >&2; exit 1
+          fi
+
+          # 版本单调性：不允许发布比现有最高标签更旧的版本。
+          # 为什么：GitHub 的 "latest" 是按**发布时间**而不是语义版本决定的，而社区安装器与 BRAT
+          # 都按 `releases/latest/download/<文件名>` 取产物——发一个更旧的版本会把 latest 指针拉回去，
+          # 于是"下载最新版"下载到旧代码。同版本重发（删掉 Release 后再发一次）不受影响。
+          # 用 sort -V 而不是字符串比较：字符串比较会把 1.10.0 判成小于 1.9.0。
+          PREV_VERSION="$(git tag --list '[0-9]*' --sort=-v:refname | grep -vx "$VERSION" | head -n1 || true)"
+          if [ -n "$PREV_VERSION" ] \
+             && [ "$(printf '%s\n%s\n' "$PREV_VERSION" "$VERSION" | sort -V | tail -n1)" != "$VERSION" ]; then
+            echo "版本回退：$VERSION 低于已存在的最高标签 $PREV_VERSION，中止" >&2
+            echo "  若确实要重发旧版本，先删掉对应标签；否则请改用更高的版本号" >&2
+            exit 1
+          fi
+
+          summary "### 版本解析结果" "" \
+                  "- 触发方式：\`$EVENT_NAME\`" \
+                  "- 待发布版本：\`$VERSION\`" \
+                  "- 同名 Release：不存在（或仅为 draft）→ 继续走校验与发布"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "exists=false"     >> "$GITHUB_OUTPUT"
+
+  # 发布前的校验关卡：调用 verify.yml（与"在 Actions 页手动跑校验"是同一个定义，单一来源）。
+  # 不通过则 build-release 根本不会开始——**校验是产物的前置，而不是事后检查**。
+  # 幂等分支同理跳过：该版本的 Release 已发布过，就没必要再校验一遍。
+  # 刻意**不**传 os_matrix：走 verify.yml 的默认值（ubuntu + windows），
+  # 发布路径上的跨平台防线不因为那个参数可配而变弱。
+  verify:
+    needs: detect-version
+    if: needs.detect-version.outputs.exists == 'false'
+    uses: ./.github/workflows/verify.yml
+
+  build-release:
+    needs: [detect-version, verify]
+    if: needs.detect-version.outputs.exists == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write     # 创建 Release / 上传附件
+      id-token: write     # attest 通过 OIDC 获取签名身份
+      attestations: write # 写入构建来源证明
+      # 刻意**不**声明 actions: write：唯一可能的消费方是 upload-artifact，而该 action 的
+      # README 并未要求此权限（产物上传走 runner 侧的运行时令牌），而这个 scope 的语义是
+      # 「用 GITHUB_TOKEN 操作 GitHub Actions，例如取消一次 workflow run」——
+      # 给一个只上传产物的作业"能取消工作流运行"的权限属于过权。
+      # 若哪天 upload-artifact 真的报权限错，加回一行即可；由于上传排在 Create Release **之前**，
+      # 真出错时也不会留下半个 Release（fail-closed）。
+    env:
+      VERSION: ${{ needs.detect-version.outputs.version }}
+    steps:
+      # 全量历史 + tags：生成 Release notes 需要上一个版本标签与提交范围
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: 'Attachment Suite/.nvmrc'
+          cache: npm
+          cache-dependency-path: 'Attachment Suite/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ${{ env.PLUGIN_DIR }}
+        run: npm ci
+      # 这里**刻意不再**重复 typecheck / test：它们已由上游的 verify job 在同一提交上跑过
+      # （ubuntu + windows 各一遍）。同一件事写在两处就是两份实现，迟早漂移。
+      # 本 job 能开始执行，本身就已经是"校验通过"的证据（见 needs）。
+      - name: Build
+        working-directory: ${{ env.PLUGIN_DIR }}
+        run: npm run build
+
+      # 为什么这里还要再查一次三件套：verify job 里那次检查保护的是**它自己那次构建**的产物，
+      # 而本 job 发布的产物来自这里**另一次** npm ci + npm run build（另一个 runner、另一个时刻）。
+      # 判据只有一份实现（复合 action），所以这不是"两份实现"，是同一份判据的两个落点。
+      # 缺了这一道，构建静默漏文件时下游两个 action 都不会报错：
+      #   actions/attest 只在 0 个 subject 时才失败（少一个文件照样签名）、
+      #   action-gh-release 的 fail_on_unmatched_files 默认 false（缺附件只警告）→ Release 照发、运行是绿的。
+      - name: Verify build output contains the three required files
+        uses: ./.github/actions/verify-plugin-dist
+        with:
+          plugin-dir: ${{ env.PLUGIN_DIR }}
+
+      # 打包插件目录为 attachment-suite.zip（内含 attachment-suite/ 子目录），供手动整包安装。
+      # 注意：Release 的**必需**附件是拆开的三个文件（见下方 Create GitHub Release），zip 只是补充。
+      # 刻意排在 Attest **之前**：zip 也是 Release 里的附件，理应同样能被
+      # `gh attestation verify` 校验——否则四个附件里有一个没有来源证明。
+      - name: Package plugin zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PLUGIN_DIR/dist"
+          zip -r attachment-suite.zip attachment-suite
+
+      # 构建来源证明：对**将要发布的四个附件**签名，任何人可用
+      #   gh attestation verify <file> --repo <owner>/<repo>
+      # 校验"这个产物确实由本仓库的这条工作流构建"。
+      # 必须放在 Build 与打包之后——证明的对象是产物本身；也必须在发布之前，产物不能先出再补签。
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        # push 事件下 inputs 是空对象 → `inputs.dry_run != true` 成立 → 照常执行；
+        # 只有手动触发并显式选择 dry_run 时才跳过（公开仓库会把签名写进 Sigstore 公共透明日志，签了撤不回）。
+        if: ${{ inputs.dry_run != true }}
+        with:
+          subject-path: |
+            Attachment Suite/dist/attachment-suite/main.js
+            Attachment Suite/dist/attachment-suite/manifest.json
+            Attachment Suite/dist/attachment-suite/styles.css
+            Attachment Suite/dist/attachment-suite.zip
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: attachment-suite-${{ env.VERSION }}
+          path: Attachment Suite/dist/attachment-suite.zip
+          retention-days: 7
+
+      # 生成 Release notes：取上一个版本标签之后的提交摘要（首个版本则列出全部提交）
+      - name: Generate release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          # ⚠️ 必须排除**当前正在发布的版本自己**：标签推送时该标签已在本地仓库中，
+          #    而 `--sort=-v:refname | head -n1` 取的是"最大版本"，恰好就是它自己 →
+          #    `git log <ver>..HEAD` 恒为空，notes 只剩标题行（只有手动触发时才正常，
+          #    因为那时新标签尚未创建）。
+          PREV_TAG="$(git tag --list '[0-9]*' --sort=-v:refname | grep -vx "$VERSION" | head -n1 || true)"
+          echo "## 变更" > notes.md
+          if [ -n "$PREV_TAG" ]; then
+            echo "Release notes 范围：$PREV_TAG..HEAD"
+            git log --oneline --no-merges "$PREV_TAG"..HEAD >> notes.md
+          else
+            echo "Release notes 范围：首个版本，列出全部提交"
+            git log --oneline --no-merges >> notes.md
+          fi
+
+      # 创建 Release（标签不存在时由 API 在 target_commitish 处自动创建 <version>），随后上传附件。
+      #
+      # ⚠️ 不要以为"API 建标签会触发 push tags 事件、再被幂等判定秒退"——**不会**：
+      #    GitHub 规定由 GITHUB_TOKEN 引发的事件不创建新的 workflow run（例外只有
+      #    workflow_dispatch 与 repository_dispatch）。detect-version 里那道幂等判定是为了
+      #    另外两种真实情形：① 在 Actions 页对**已发布**的版本点 "Re-run all jobs"；
+      #    ② 手动 dispatch 与标签推送先后到达。
+      #
+      # ⚠️ 附件必须是 main.js / manifest.json / styles.css **三个独立文件**（Obsidian 官方发布规范）：
+      #    社区目录安装器与 BRAT 逐个请求 `releases/latest/download/<file>`，
+      #    只提供 zip 会让插件**装不上**。zip 一并保留，供手动整包安装。
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        # dry run 的唯一目的就是"不发出去"——这是全链路唯一会创建对外可见 Release 的一步。
+        if: ${{ inputs.dry_run != true }}
+        with:
+          tag_name: ${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          body_path: notes.md
+          draft: false
+          prerelease: false
+          # 显式固定（不传时 API 默认值也是 true）：latest 指针决定 releases/latest/download/*
+          # 取到哪一版，是社区安装器与 BRAT 的取文件路径，值得写在明处而不是依赖默认值。
+          # 反向的那一半由 detect-version 的版本单调性守卫保证——旧版本根本走不到这一步。
+          make_latest: true
+          # 该输入的默认值是 false：`files` 里某个路径不存在时只打警告、不失败 →
+          # 会发布一个缺附件的 Release，而运行依然是绿的。置 true 让"缺附件"成为硬失败。
+          # （它在上面的三件套检查之外再兜一层：这里覆盖的是**四个**附件，含 zip。）
+          fail_on_unmatched_files: true
+          files: |
+            Attachment Suite/dist/attachment-suite/main.js
+            Attachment Suite/dist/attachment-suite/manifest.json
+            Attachment Suite/dist/attachment-suite/styles.css
+            Attachment Suite/dist/attachment-suite.zip
